@@ -34,12 +34,12 @@ class MoistureDataUpdateCoordinator(DataUpdateCoordinator):
             temp_state = self.hass.states.get("sensor.outside_temperature")
             humidity_state = self.hass.states.get("sensor.tsensor_outside_humidity")
             sun_state = self.hass.states.get("sun.sun")
-            rain_state = self.hass.states.get("binary_sensor.rain_sensor") # To be implemented
+            rain_state = self.hass.states.get("sensor.rain_sensor")
 
             # (Error checking here in case sensors are 'unavailable')
             temp = float(temp_state.state)
             humidity = float(humidity_state.state)
-            is_raining = rain_state.state == "on"
+            is_raining = rain_state.state == 1
             is_daytime = sun_state.state == "above_horizon"
             
             # --- 1. Calculate Dew Point ---

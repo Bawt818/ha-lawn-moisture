@@ -2,21 +2,32 @@
 
 from __future__ import annotations
 
+import math
 from datetime import timedelta
 
 from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
-from .const import DOMAIN, LOGGER
-
-import math
+from .const import (
+    DEW_MOIST_CAP,
+    DEW_TEMP_DIFFERENCE,
+    DOMAIN,
+    HUMIDITY_THRESHOLD,
+    LOGGER,
+    MASTER_DRYING_COEFFICIENT,
+    MAX_DRYING_TEMP_C,
+    MAX_EFFECTIVE_WIND_KMH,
+    MAX_SOLAR_POWER_W,
+    MIN_DRYING_TEMP_C,
+    WEIGHTS,
+    WETTING_INCREMENT,
+)
 
 
 # https://developers.home-assistant.io/docs/integration_fetching_data#coordinated-single-api-poll-for-data-for-all-entities
 class MoistureDataUpdateCoordinator(DataUpdateCoordinator):
     """Class to manage fetching moisture data from the API."""
-        
+
     def __init__(self, hass: HomeAssistant) -> None:
         """Initialize."""
         super().__init__(
@@ -24,7 +35,7 @@ class MoistureDataUpdateCoordinator(DataUpdateCoordinator):
             LOGGER,
             name=DOMAIN,
             update_interval=timedelta(minutes=5),
-        )        
+        )
         self.moisture_level: float = 0.5
 
     async def _async_update_data(self) -> dict:
@@ -36,8 +47,6 @@ class MoistureDataUpdateCoordinator(DataUpdateCoordinator):
             rain_state = self.hass.states.get("sensor.rain_sensor")
             sun_power = self.hass.states.get("sensor.solar_total_power")
             weather_state = self.hass.states.get("weather.forecast_home_2")
-            if not weather_state:
-                raise UpdateFailed("Weather entity is missing.")
             attributes_dict = weather_state.attributes
             wind_speed = attributes_dict.get("wind_speed", 0)
 
@@ -56,7 +65,7 @@ class MoistureDataUpdateCoordinator(DataUpdateCoordinator):
             except (TypeError, ValueError):
                 solar = 0.0
 
-            
+
             # --- 1. Calculate Dew Point ---
             dew_point = calculate_dew_point(temp, humidity)
             dew_point_depression = temp - dew_point # How close are we to 100%?
@@ -77,25 +86,32 @@ class MoistureDataUpdateCoordinator(DataUpdateCoordinator):
                 current_moisture = 1.0
 
             # B. Handle Wetting (Dew at Night)
-            elif not is_daytime and humidity > 90.0 and current_moisture < 0.6:
+            elif (
+                not is_daytime
+                and humidity > HUMIDITY_THRESHOLD
+                and current_moisture < DEW_MOIST_CAP
+                and dew_point_depression < DEW_TEMP_DIFFERENCE
+            ):
                 # It's a dewy night. Add a small amount.
-                dew_increase = 0.05 
-                current_moisture = min(current_moisture + dew_increase, 0.6)
+                dew_increase = WETTING_INCREMENT
+                current_moisture = min(current_moisture + dew_increase, DEW_MOIST_CAP)
 
             # C. Handle Drying (Daytime)
-            elif is_daytime and humidity < 90.0:
+            elif is_daytime and humidity < HUMIDITY_THRESHOLD:
                 current_moisture = max(0.0, current_moisture - dry_rate)
-            
+
             # --- 4. Save the new state ---
             self.moisture_level = round(current_moisture, 3)
 
+        except Exception as e:
+            msg = f"Error updating data: {e}"
+            raise UpdateFailed(msg) from e
+        else:
             # --- 5. Return the data for sensors to use ---
             return {
                 "moisture": self.moisture_level,
                 "dew_point": dew_point,
             }
-        except Exception as e:
-            raise UpdateFailed(f"Error updating data: {e}") from e
 
 
 # Constants for the Magnus-Tetens formula (for dew point)
@@ -105,54 +121,39 @@ B = 237.7
 def calculate_dew_point(temp_c: float, relative_humidity: float) -> float:
     """
     Calculate the dew point in Celsius using the Magnus-Tetens formula.
-    
+
     :param temp_c: Current temperature in Celsius.
     :param relative_humidity: Current relative humidity as a percentage (e.g., 65.0).
     :return: Dew point in Celsius.
     """
     rh = relative_humidity / 100.0
-    
+
     # Calculate the "gamma" value
     gamma = (A * temp_c) / (B + temp_c) + math.log(rh)
-    
+
     # Calculate the dew point
-    dew_point = (B * gamma) / (A - gamma)
-    
-    return dew_point
+
+    return (B * gamma) / (A - gamma)
 
 
-# 1. Master Drying Coefficient: The overall speed of evaporation.
-# A higher value means the grass dries faster in ideal conditions.
-MASTER_DRYING_COEFFICIENT = 0.02
-
-# 2. Component Weights: How much each factor contributes to the drying process.
-WEIGHTS = {
-    "temperature": 0.15, # Warmth helps.
-    "wind": 0.10,     # Wind helps.
-}
-
-# 3. Sensor Normalization Ranges: Define the expected "min" and "max" for your sensors
-# to scale them to a 0.0-1.0 factor.
-# - Set MAX_SOLAR_POWER to the typical maximum wattage your panels produce on a clear sunny day.
-# - Set temperatures for a reasonable range where drying occurs.
-# - Set wind speed for a range where it has a meaningful effect.
-MAX_SOLAR_POWER_W = 6000  # Watts
-MIN_DRYING_TEMP_C = 8     # Drying is negligible below this temp
-MAX_DRYING_TEMP_C = 30    # At this temp, the contribution is maxed out
-MAX_EFFECTIVE_WIND_KMH = 30 # Wind speeds above this don't add much more effect
-
-
-def calculate_grass_drying(solar_power: float, humidity: float, temperature: float, wind_speed: float) -> float:
+def calculate_grass_drying(
+        solar_power: float,
+        humidity: float,
+        temperature: float,
+        wind_speed: float
+        ) -> float:
     """
-    Calculates the new grass wetness level after accounting for evaporation.
+    Calculate the new grass wetness level after accounting for evaporation.
 
     Args:
-        current_wetness (float): The current wetness score (0.0 to 1.0).
-        sensor_data (dict): A dictionary containing the current values from required sensors.
-                            Expected keys: 'solar_power', 'humidity', 'temperature', 'wind_speed'.
+        solar_power (float): Current solar power in Watts.
+        humidity (float): Current relative outside humidity as a percentage (0-100).
+        temperature (float): Current outside temperature in Celsius.
+        wind_speed (float): Current wind speed in km/h.
 
     Returns:
         float: The new, lower wetness score, clamped between 0.0 and 1.0.
+
     """
     # --- Step 1: Calculate individual factor components (0.0 to 1.0) ---
 
@@ -161,7 +162,7 @@ def calculate_grass_drying(solar_power: float, humidity: float, temperature: flo
 
     # Humidity Component: Less humidity = more drying. This is an inverse relationship.
     humidity_component = (90.0 - humidity) / 100.0 # No drying above 90% humidity
-    humidity_component = max(0.0, min(1.0, humidity_component)) 
+    humidity_component = max(0.0, min(1.0, humidity_component))
 
     # Temperature Component: Warmer is better. Scaled between min and max temps.
     temp_range = MAX_DRYING_TEMP_C - MIN_DRYING_TEMP_C
@@ -179,8 +180,10 @@ def calculate_grass_drying(solar_power: float, humidity: float, temperature: flo
 
     # Calculate the boost from "accelerant factors" (temp and wind).
     # Starts at 1.0 (no boost) and increases with favorable conditions.
-    accelerant_boost = 1.0 + (temp_component * WEIGHTS["temperature"]) + (wind_component * WEIGHTS["wind"])
+    accelerant_boost = (
+        1.0
+        + (temp_component * WEIGHTS["temperature"])
+        + (wind_component * WEIGHTS["wind"])
+    )
 
-    total_drying_potential = base_drying_potential * accelerant_boost * MASTER_DRYING_COEFFICIENT
-
-    return total_drying_potential
+    return base_drying_potential * accelerant_boost * MASTER_DRYING_COEFFICIENT

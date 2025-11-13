@@ -8,7 +8,6 @@ from homeassistant.components.sensor import (
     SensorEntityDescription,
     SensorStateClass,
 )
-
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -32,7 +31,6 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up the sensor platform."""
-
     coordinator: MoistureDataUpdateCoordinator = hass.data[DOMAIN][entry.entry_id]
 
     async_add_entities([
@@ -41,9 +39,12 @@ async def async_setup_entry(
     ])
 
 
-class GrassMoistureSensor(CoordinatorEntity[MoistureDataUpdateCoordinator], SensorEntity):
+class GrassMoistureSensor(
+    CoordinatorEntity[MoistureDataUpdateCoordinator],SensorEntity
+    ):
     """
     The main sensor for grass moisture.
+
     It inherits from CoordinatorEntity to auto-link with the coordinator.
     """
 
@@ -58,7 +59,7 @@ class GrassMoistureSensor(CoordinatorEntity[MoistureDataUpdateCoordinator], Sens
         """Initialize the sensor."""
         # Pass the coordinator to the parent class
         super().__init__(coordinator)
-        
+
         # Set a unique ID for this entity
         self._attr_unique_id = f"{coordinator.config_entry.entry_id}_grass_moisture"
 
@@ -68,7 +69,7 @@ class GrassMoistureSensor(CoordinatorEntity[MoistureDataUpdateCoordinator], Sens
         if self.coordinator.data:
             return self.coordinator.data["moisture"] * 100.0
         return None
-    
+
     '''
     def __init__(
         self,

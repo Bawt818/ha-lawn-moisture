@@ -25,23 +25,49 @@ ENTITY_DESCRIPTIONS = (
 
 
 async def async_setup_entry(
-    hass: HomeAssistant,  # noqa: ARG001 Unused function argument: `hass`
+    hass: HomeAssistant,
     entry: IntegrationBlueprintConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up the sensor platform."""
-    async_add_entities(
-        IntegrationBlueprintSensor(
-            coordinator=entry.runtime_data.coordinator,
-            entity_description=entity_description,
-        )
-        for entity_description in ENTITY_DESCRIPTIONS
-    )
+
+    coordinator: MoistureDataUpdateCoordinator = hass.data[DOMAIN][entry.entry_id]
+
+    async_add_entities([
+        GrassMoistureSensor(coordinator),
+        DewPointSensor(coordinator),
+    ])
 
 
-class IntegrationBlueprintSensor(IntegrationBlueprintEntity, SensorEntity):
-    """integration_blueprint Sensor class."""
+class GrassMoistureSensor(CoordinatorEntity[MoistureDataUpdateCoordinator], SensorEntity):
+    """
+    The main sensor for grass moisture.
+    It inherits from CoordinatorEntity to auto-link with the coordinator.
+    """
 
+    # --- Properties for HA UI ---
+    _attr_name = "Grass Moisture"
+    _attr_device_class = SensorDeviceClass.MOISTURE
+    _attr_native_unit_of_measurement = "%"
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_suggested_display_precision = 1
+
+    def __init__(self, coordinator: MoistureDataUpdateCoordinator) -> None:
+        """Initialize the sensor."""
+        # Pass the coordinator to the parent class
+        super().__init__(coordinator)
+        
+        # Set a unique ID for this entity
+        self._attr_unique_id = f"{coordinator.config_entry.entry_id}_grass_moisture"
+
+    @property
+    def native_value(self) -> float | None:
+        """Return the state of the sensor."""
+        if self.coordinator.data:
+            return self.coordinator.data["moisture"] * 100.0
+        return None
+    
+    '''
     def __init__(
         self,
         coordinator: BlueprintDataUpdateCoordinator,
@@ -55,3 +81,4 @@ class IntegrationBlueprintSensor(IntegrationBlueprintEntity, SensorEntity):
     def native_value(self) -> str | None:
         """Return the native value of the sensor."""
         return self.coordinator.data.get("body")
+    '''

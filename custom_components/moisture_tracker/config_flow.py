@@ -11,6 +11,7 @@ from .const import DOMAIN
 
 STEP_USER_DATA_SCHEMA = vol.Schema({})
 
+
 class MoistureTrackerConfigFlow(ConfigFlow, domain=DOMAIN):
     """Handle a config flow for Moisture Tracker."""
 
@@ -29,7 +30,4 @@ class MoistureTrackerConfigFlow(ConfigFlow, domain=DOMAIN):
             return self.async_create_entry(title="Grass Moisture", data={})
 
         # --- 3. Show the form to the user ---
-        return self.async_show_form(
-            step_id="user",
-            data_schema=STEP_USER_DATA_SCHEMA
-        )
+        return self.async_show_form(step_id="user", data_schema=STEP_USER_DATA_SCHEMA)

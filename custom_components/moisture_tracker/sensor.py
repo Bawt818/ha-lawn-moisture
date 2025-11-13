@@ -37,15 +37,17 @@ async def async_setup_entry(
     """Set up the sensor platform."""
     coordinator: MoistureDataUpdateCoordinator = hass.data[DOMAIN][entry.entry_id]
 
-    async_add_entities([
-        GrassMoistureSensor(coordinator),
-        DewPointSensor(coordinator),
-    ])
+    async_add_entities(
+        [
+            GrassMoistureSensor(coordinator),
+            DewPointSensor(coordinator),
+        ]
+    )
 
 
 class GrassMoistureSensor(
-    CoordinatorEntity[MoistureDataUpdateCoordinator],SensorEntity
-    ):
+    CoordinatorEntity[MoistureDataUpdateCoordinator], SensorEntity
+):
     """
     The main sensor for grass moisture.
 
@@ -89,6 +91,8 @@ class GrassMoistureSensor(
         """Return the native value of the sensor."""
         return self.coordinator.data.get("body")
     '''
+
+
 class DewPointSensor(CoordinatorEntity[MoistureDataUpdateCoordinator], SensorEntity):
     """A sensor to expose the calculated dew point."""
 

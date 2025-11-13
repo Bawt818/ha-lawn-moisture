@@ -68,10 +68,9 @@ class MoistureDataUpdateCoordinator(DataUpdateCoordinator):
             except (TypeError, ValueError):
                 solar = 0.0
 
-
             # --- 1. Calculate Dew Point ---
             dew_point = calculate_dew_point(temp, humidity)
-            dew_point_depression = temp - dew_point # How close are we to 100%?
+            dew_point_depression = temp - dew_point  # How close are we to 100%?
 
             # --- 2. Calculate Drying via Evaporation ---
             dry_rate = calculate_grass_drying(
@@ -121,6 +120,7 @@ class MoistureDataUpdateCoordinator(DataUpdateCoordinator):
 A = 17.27
 B = 237.7
 
+
 def calculate_dew_point(temp_c: float, relative_humidity: float) -> float:
     """
     Calculate the dew point in Celsius using the Magnus-Tetens formula.
@@ -140,11 +140,8 @@ def calculate_dew_point(temp_c: float, relative_humidity: float) -> float:
 
 
 def calculate_grass_drying(
-        solar_power: float,
-        humidity: float,
-        temperature: float,
-        wind_speed: float
-        ) -> float:
+    solar_power: float, humidity: float, temperature: float, wind_speed: float
+) -> float:
     """
     Calculate the new grass wetness level after accounting for evaporation.
 
@@ -161,10 +158,10 @@ def calculate_grass_drying(
     # --- Step 1: Calculate individual factor components (0.0 to 1.0) ---
 
     # Sun Component: More sun = more drying. Linear scale.
-    sun_component = max(0.0, min(1.0, solar_power / MAX_SOLAR_POWER_W)) # Clamp it
+    sun_component = max(0.0, min(1.0, solar_power / MAX_SOLAR_POWER_W))  # Clamp it
 
     # Humidity Component: Less humidity = more drying. This is an inverse relationship.
-    humidity_component = (90.0 - humidity) / 100.0 # No drying above 90% humidity
+    humidity_component = (90.0 - humidity) / 100.0  # No drying above 90% humidity
     humidity_component = max(0.0, min(1.0, humidity_component))
 
     # Temperature Component: Warmer is better. Scaled between min and max temps.

@@ -13,7 +13,6 @@ from .const import DOMAIN, LOGGER
 import math
 
 
-
 # https://developers.home-assistant.io/docs/integration_fetching_data#coordinated-single-api-poll-for-data-for-all-entities
 class MoistureDataUpdateCoordinator(DataUpdateCoordinator):
     """Class to manage fetching moisture data from the API."""
@@ -35,18 +34,42 @@ class MoistureDataUpdateCoordinator(DataUpdateCoordinator):
             humidity_state = self.hass.states.get("sensor.tsensor_outside_humidity")
             sun_state = self.hass.states.get("sun.sun")
             rain_state = self.hass.states.get("sensor.rain_sensor")
+            sun_power = self.hass.states.get("sensor.solar_total_power")
+            weather_state = self.hass.states.get("weather.forecast_home_2")
+            if not weather_state:
+                raise UpdateFailed("Weather entity is missing.")
+            attributes_dict = weather_state.attributes
+            wind_speed = attributes_dict.get("wind_speed", 0)
 
             # (Error checking here in case sensors are 'unavailable')
+            try:
+                wind = float(wind_speed)
+            except (TypeError, ValueError):
+                # Handle case where the value might be 'unknown' or 'None'
+                wind = 0.0
             temp = float(temp_state.state)
             humidity = float(humidity_state.state)
             is_raining = rain_state.state == 1
             is_daytime = sun_state.state == "above_horizon"
+            try:
+                solar = float(sun_power.state)
+            except (TypeError, ValueError):
+                solar = 0.0
+
             
             # --- 1. Calculate Dew Point ---
             dew_point = calculate_dew_point(temp, humidity)
             dew_point_depression = temp - dew_point # How close are we to 100%?
 
-            # --- 2. Run the Model Logic ---
+            # --- 2. Calculate Drying via Evaporation ---
+            dry_rate = calculate_grass_drying(
+                solar,
+                humidity,
+                temp,
+                wind,
+            )
+
+            # --- 3. Run the Model Logic ---
             current_moisture = self.moisture_level
 
             # A. Handle Rain (Resets everything)
@@ -54,22 +77,19 @@ class MoistureDataUpdateCoordinator(DataUpdateCoordinator):
                 current_moisture = 1.0
 
             # B. Handle Wetting (Dew at Night)
-            elif not is_daytime and dew_point_depression < 2.0 and humidity > 90.0:
+            elif not is_daytime and humidity > 90.0 and current_moisture < 0.6:
                 # It's a dewy night. Add a small amount.
                 dew_increase = 0.05 
                 current_moisture = min(current_moisture + dew_increase, 0.6)
 
             # C. Handle Drying (Daytime)
-            elif is_daytime and dew_point_depression > 5.0:
-                # It's drying out. The 'dry_rate' can be a function
-                # of how dry the air is (dew_point_depression).
-                dry_rate = 0.01 * (dew_point_depression) 
+            elif is_daytime and humidity < 90.0:
                 current_moisture = max(0.0, current_moisture - dry_rate)
             
-            # --- 3. Save the new state ---
+            # --- 4. Save the new state ---
             self.moisture_level = round(current_moisture, 3)
 
-            # --- 4. Return the data for sensors to use ---
+            # --- 5. Return the data for sensors to use ---
             return {
                 "moisture": self.moisture_level,
                 "dew_point": dew_point,
@@ -99,4 +119,68 @@ def calculate_dew_point(temp_c: float, relative_humidity: float) -> float:
     dew_point = (B * gamma) / (A - gamma)
     
     return dew_point
-    
+
+
+# 1. Master Drying Coefficient: The overall speed of evaporation.
+# A higher value means the grass dries faster in ideal conditions.
+MASTER_DRYING_COEFFICIENT = 0.02
+
+# 2. Component Weights: How much each factor contributes to the drying process.
+WEIGHTS = {
+    "temperature": 0.15, # Warmth helps.
+    "wind": 0.10,     # Wind helps.
+}
+
+# 3. Sensor Normalization Ranges: Define the expected "min" and "max" for your sensors
+# to scale them to a 0.0-1.0 factor.
+# - Set MAX_SOLAR_POWER to the typical maximum wattage your panels produce on a clear sunny day.
+# - Set temperatures for a reasonable range where drying occurs.
+# - Set wind speed for a range where it has a meaningful effect.
+MAX_SOLAR_POWER_W = 6000  # Watts
+MIN_DRYING_TEMP_C = 8     # Drying is negligible below this temp
+MAX_DRYING_TEMP_C = 30    # At this temp, the contribution is maxed out
+MAX_EFFECTIVE_WIND_KMH = 30 # Wind speeds above this don't add much more effect
+
+
+def calculate_grass_drying(solar_power: float, humidity: float, temperature: float, wind_speed: float) -> float:
+    """
+    Calculates the new grass wetness level after accounting for evaporation.
+
+    Args:
+        current_wetness (float): The current wetness score (0.0 to 1.0).
+        sensor_data (dict): A dictionary containing the current values from required sensors.
+                            Expected keys: 'solar_power', 'humidity', 'temperature', 'wind_speed'.
+
+    Returns:
+        float: The new, lower wetness score, clamped between 0.0 and 1.0.
+    """
+    # --- Step 1: Calculate individual factor components (0.0 to 1.0) ---
+
+    # Sun Component: More sun = more drying. Linear scale.
+    sun_component = max(0.0, min(1.0, solar_power / MAX_SOLAR_POWER_W)) # Clamp it
+
+    # Humidity Component: Less humidity = more drying. This is an inverse relationship.
+    humidity_component = (90.0 - humidity) / 100.0 # No drying above 90% humidity
+    humidity_component = max(0.0, min(1.0, humidity_component)) 
+
+    # Temperature Component: Warmer is better. Scaled between min and max temps.
+    temp_range = MAX_DRYING_TEMP_C - MIN_DRYING_TEMP_C
+    temp_component = (temperature - MIN_DRYING_TEMP_C) / temp_range
+    temp_component = max(0.0, min(1.0, temp_component))
+
+    # Wind Component: More wind = more drying, up to a certain point.
+    wind_component = wind_speed / MAX_EFFECTIVE_WIND_KMH
+    wind_component = max(0.0, min(1.0, wind_component))
+
+    # --- Step 2: Calculate the total drying potential using weights ---
+
+    # Multiply the two "limiting factors" to get the base potential.
+    base_drying_potential = sun_component * humidity_component
+
+    # Calculate the boost from "accelerant factors" (temp and wind).
+    # Starts at 1.0 (no boost) and increases with favorable conditions.
+    accelerant_boost = 1.0 + (temp_component * WEIGHTS["temperature"]) + (wind_component * WEIGHTS["wind"])
+
+    total_drying_potential = base_drying_potential * accelerant_boost * MASTER_DRYING_COEFFICIENT
+
+    return total_drying_potential

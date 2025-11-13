@@ -4,9 +4,12 @@ from __future__ import annotations
 
 import math
 from datetime import timedelta
+from typing import TYPE_CHECKING
 
-from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
+
+if TYPE_CHECKING:
+    from homeassistant.core import HomeAssistant
 
 from .const import (
     DEW_MOIST_CAP,

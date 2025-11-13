@@ -1,23 +1,19 @@
-"""Adds config flow for Blueprint."""
+"""Config flow for moisture_tracker."""
 
 from __future__ import annotations
 
 import voluptuous as vol
-from homeassistant import config_entries
-from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
-from homeassistant.helpers import selector
-from homeassistant.helpers.aiohttp_client import async_create_clientsession
-from slugify import slugify
+from typing import Any
 
-from .api import (
-    IntegrationBlueprintApiClient,
-    IntegrationBlueprintApiClientAuthenticationError,
-    IntegrationBlueprintApiClientCommunicationError,
-    IntegrationBlueprintApiClientError,
-)
+from homeassistant import config_entries
+from homeassistant.config_entries import ConfigFlow, ConfigFlowResult
+from homeassistant.core import HomeAssistant
+
 from .const import DOMAIN, LOGGER
 
-class MoistureTrackerConfigFlow(ConfigFlow, domain=DOMAIN):
+STEP_USER_DATA_SCHEMA = vol.Schema({}) 
+
+class MoistureTrackerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle a config flow for Moisture Tracker."""
 
     VERSION = 1

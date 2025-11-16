@@ -20,7 +20,7 @@ WETTING_INCREMENT: float = 0.1
 
 # 1. Master Drying Coefficient: The overall speed of evaporation.
 # A higher value means the grass dries faster in ideal conditions.
-MASTER_DRYING_COEFFICIENT = 0.02
+MASTER_DRYING_COEFFICIENT: float = 0.02
 
 # 2. Component Weights: How much each factor contributes to the drying process.
 WEIGHTS = {
@@ -33,7 +33,7 @@ WEIGHTS = {
 # - Set MAX_SOLAR_POWER to the typical maximum wattage your panels produce.
 # - Set temperatures for a reasonable range where drying occurs.
 # - Set wind speed for a range where it has a meaningful effect.
-MAX_SOLAR_POWER_W = 6000  # Watts
-MIN_DRYING_TEMP_C = 8  # Drying is negligible below this temp
-MAX_DRYING_TEMP_C = 30  # At this temp, the contribution is maxed out
-MAX_EFFECTIVE_WIND_KMH = 30  # Wind speeds above this don't add much more effect
+MAX_SOLAR_POWER_W: float = 6000  # Watts
+MIN_DRYING_TEMP_C: float = 8  # Drying is negligible below this temp
+MAX_DRYING_TEMP_C: float = 30  # At this temp, the contribution is maxed out
+MAX_EFFECTIVE_WIND_KMH: float = 30  # Wind speeds above this don't add much more effect

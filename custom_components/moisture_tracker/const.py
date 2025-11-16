@@ -10,12 +10,13 @@ PLATFORMS: list[str] = ["sensor"]
 
 # --- MODEL TUNING CONSTANTS ---
 # Wetting
-HUMIDITY_THRESHOLD: float = 90.0
-DEW_TEMP_DIFFERENCE: float = 5.0  # (temp - dew_point)
+HUMIDITY_THRESHOLD: float = 85.0
+DEW_TEMP_DIFFERENCE: float = 1.0  # (temp - dew_point)
 DEW_MOIST_CAP: float = 0.6  # (60%)
+DEW_RESET_HOUR: int = 12
 
 # Increments
-WETTING_INCREMENT: float = 0.01
+WETTING_INCREMENT: float = 0.1
 
 # 1. Master Drying Coefficient: The overall speed of evaporation.
 # A higher value means the grass dries faster in ideal conditions.

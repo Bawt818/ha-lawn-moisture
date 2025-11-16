@@ -7,12 +7,14 @@ from datetime import timedelta
 from typing import TYPE_CHECKING
 
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
+from homeassistant.util import dt as dt_util
 
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
 
 from .const import (
     DEW_MOIST_CAP,
+    DEW_RESET_HOUR,
     DEW_TEMP_DIFFERENCE,
     DOMAIN,
     HUMIDITY_THRESHOLD,
@@ -39,7 +41,14 @@ class MoistureDataUpdateCoordinator(DataUpdateCoordinator):
             name=DOMAIN,
             update_interval=timedelta(minutes=5),
         )
-        self.moisture_level: float = 0.5
+        # Store the moisture level between runs with self.
+        self.moisture_level: float = 0.
+
+        self.sunset_temp: float | None = None
+        self.sunset_humi: float | None = None
+
+        # store the sunset values ONCE per day.
+        self.has_stored_sunset_values: bool = False
 
     async def _async_update_data(self) -> dict:
         try:
@@ -52,32 +61,60 @@ class MoistureDataUpdateCoordinator(DataUpdateCoordinator):
             weather_state = self.hass.states.get("weather.forecast_home_2")
             attributes_dict = weather_state.attributes
             wind_speed = attributes_dict.get("wind_speed", 0)
-
-            # (Error checking here in case sensors are 'unavailable')
-            try:
-                wind = float(wind_speed)
-            except (TypeError, ValueError):
-                # Handle case where the value might be 'unknown' or 'None'
-                wind = 0.0
             temp = float(temp_state.state)
             humidity = float(humidity_state.state)
             is_raining = rain_state.state == 1
             is_daytime = sun_state.state == "above_horizon"
-            try:
-                solar = float(sun_power.state)
-            except (TypeError, ValueError):
-                solar = 0.0
+
+            now = dt_util.now()
+
+            # --- Handle setting temperature and humididty at sunset ---
+
+            sunset_time_str = sun_state.attributes.get("next_setting")
+            sunset_time = dt_util.parse_datetime(sunset_time_str)
+
+            trigger_time = sunset_time - timedelta(minutes=30)
+
+            if (now >= trigger_time) and (not self.has_stored_sunset_values):
+                self.sunset_temp = temp
+                self.sunset_humi = humidity
+                self.has_stored_sunset_values = True
+
+                LOGGER.info(
+                    "Moisture Tracker: Stored sunset values. Temp: %s, Humidity: %s",
+                    self.sunset_temp,
+                    self.sunset_humi,
+                )
+
+            # Reset the flag (In the 12:00-12:05 window)
+            if now.hour == DEW_RESET_HOUR and now.minute < 5: # noqa: PLR2004
+                self.has_stored_sunset_values = False
+                self.sunset_temp = None # Clear old values
+                self.sunset_humi = None
+                LOGGER.info("Moisture Tracker: Reset daily sunset flag.")
+
+            # --- End of sunset section ---
+
+            # .
 
             # --- 1. Calculate Dew Point ---
             dew_point = calculate_dew_point(temp, humidity)
-            dew_point_depression = temp - dew_point  # How close are we to 100%?
+
+            dew_point_depression: float = 100.0
+
+            if self.sunset_humi and self.sunset_temp:
+                dew_point_sunset = calculate_dew_point(self.sunset_temp,
+                                                       self.sunset_humi)
+                # Temperature below dew point
+                dew_point_depression = dew_point_sunset + DEW_TEMP_DIFFERENCE - temp
+
 
             # --- 2. Calculate Drying via Evaporation ---
             dry_rate = calculate_grass_drying(
-                solar,
+                sun_power,
                 humidity,
                 temp,
-                wind,
+                wind_speed,
             )
 
             # --- 3. Run the Model Logic ---
@@ -90,13 +127,12 @@ class MoistureDataUpdateCoordinator(DataUpdateCoordinator):
             # B. Handle Wetting (Dew at Night)
             elif (
                 not is_daytime
-                and humidity > HUMIDITY_THRESHOLD
                 and current_moisture < DEW_MOIST_CAP
-                and dew_point_depression < DEW_TEMP_DIFFERENCE
+                and dew_point_depression > 0.0
             ):
-                # It's a dewy night. Add a small amount.
-                dew_increase = WETTING_INCREMENT
-                current_moisture = min(current_moisture + dew_increase, DEW_MOIST_CAP)
+                dew_rate = dew_point_depression * WETTING_INCREMENT
+                moisture_increase = max(current_moisture, dew_rate)
+                current_moisture = min(moisture_increase, DEW_MOIST_CAP)
 
             # C. Handle Drying (Daytime)
             elif is_daytime and humidity < HUMIDITY_THRESHOLD:

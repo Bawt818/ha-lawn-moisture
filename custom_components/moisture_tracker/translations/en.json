@@ -1,21 +1,21 @@
 {
-    "config": {
-        "step": {
-            "user": {
-                "description": "If you need help with the configuration have a look here: https://github.com/ludeeus/integration_blueprint",
-                "data": {
-                    "username": "Username",
-                    "password": "Password"
-                }
-            }
-        },
-        "error": {
-            "auth": "Username/Password is wrong.",
-            "connection": "Unable to connect to the server.",
-            "unknown": "Unknown error occurred."
-        },
-        "abort": {
-            "already_configured": "This entry is already configured."
+  "config": {
+    "step": {
+      "user": {
+        "title": "Grass Moisture Tracker Setup",
+        "description": "Select the entities that will provide data for the moisture model.",
+        "data": {
+          "temp_sensor": "Outdoor Temperature Sensor",
+          "humidity_sensor": "Outdoor Humidity Sensor",
+          "solar_sensor": "Solar Power Sensor",
+          "rain_sensor": "Rain Sensor",
+          "weather_entity": "Weather Forecast Entity",
+          "sun_sensor": "Sun Entity (usually sun.sun)"
         }
+      }
+    },
+    "abort": {
+      "single_instance_allowed": "Only one instance of Grass Moisture Tracker is allowed."
     }
+  }
 }

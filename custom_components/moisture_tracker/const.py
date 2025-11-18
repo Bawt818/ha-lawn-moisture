@@ -37,3 +37,12 @@ MAX_SOLAR_POWER_W: float = 6000  # Watts
 MIN_DRYING_TEMP_C: float = 8  # Drying is negligible below this temp
 MAX_DRYING_TEMP_C: float = 30  # At this temp, the contribution is maxed out
 MAX_EFFECTIVE_WIND_KMH: float = 30  # Wind speeds above this don't add much more effect
+
+
+# --- Configuration Keys ---
+CONF_TEMP_SENSOR = "temp_sensor"
+CONF_HUMI_SENSOR = "humidity_sensor"
+CONF_SUN_SENSOR = "sun_sensor"  # Usually sun.sun, but let's allow selection
+CONF_RAIN_SENSOR = "rain_sensor"
+CONF_SOLAR_SENSOR = "solar_sensor"
+CONF_WEATHER_ENTITY = "weather_entity"

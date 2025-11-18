@@ -24,7 +24,8 @@ async def async_setup_entry(
 ) -> bool:
     """Set up the moisture tracker from a config entry."""
     coordinator = MoistureDataUpdateCoordinator(
-        hass=hass,
+        hass,
+        config=entry.data,
     )
     await coordinator.async_config_entry_first_refresh()
 

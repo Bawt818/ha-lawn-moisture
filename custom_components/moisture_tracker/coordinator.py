@@ -13,6 +13,12 @@ if TYPE_CHECKING:
 
 from .calculations import calculate_dew_point, calculate_grass_drying
 from .const import (
+    CONF_HUMI_SENSOR,
+    CONF_RAIN_SENSOR,
+    CONF_SOLAR_SENSOR,
+    CONF_SUN_SENSOR,
+    CONF_TEMP_SENSOR,
+    CONF_WEATHER_ENTITY,
     DEW_MOIST_CAP,
     DEW_RESET_HOUR,
     DEW_TEMP_DIFFERENCE,
@@ -27,7 +33,7 @@ from .const import (
 class MoistureDataUpdateCoordinator(DataUpdateCoordinator):
     """Class to manage fetching moisture data from the API."""
 
-    def __init__(self, hass: HomeAssistant) -> None:
+    def __init__(self, hass: HomeAssistant, config: dict) -> None:
         """Initialize."""
         super().__init__(
             hass,
@@ -35,13 +41,19 @@ class MoistureDataUpdateCoordinator(DataUpdateCoordinator):
             name=DOMAIN,
             update_interval=timedelta(minutes=5),
         )
-        # Store the moisture level between runs with self.
-        self.moisture_level: float = 0.0
 
+        # --- Store the User-Selected Entity IDs ---
+        self.temp_entity_id = config[CONF_TEMP_SENSOR]
+        self.humi_entity_id = config[CONF_HUMI_SENSOR]
+        self.solar_entity_id = config[CONF_SOLAR_SENSOR]
+        self.rain_entity_id = config[CONF_RAIN_SENSOR]
+        self.weather_entity_id = config[CONF_WEATHER_ENTITY]
+        self.sun_entity_id = config.get(CONF_SUN_SENSOR, "sun.sun")
+
+        # --- State Storage ---
+        self.moisture_level: float = 0.0
         self.sunset_temp: float | None = None
         self.sunset_humi: float | None = None
-
-        # store the sunset values ONCE per day.
         self.has_stored_sunset_values: bool = False
 
     async def _async_update_data(self) -> dict:
@@ -49,13 +61,13 @@ class MoistureDataUpdateCoordinator(DataUpdateCoordinator):
             # --- Fetching and unpacking data dict ---
             data = self._fetch_and_prepare_data()
 
-            temp: float = data["temperature"]
+            temp: float = data["temp"]
             humidity: float = data["humidity"]
             solar: float = data["solar"]
             wind_speed: float = data["wind"]
             raining: int = data["raining"]
             is_daytime: bool = data["is_daytime"]
-            sunset: timedelta = data["sunset"]
+            sunset: datetime = data["sunset"]
 
             now = dt_util.now()
             self._track_sunset_conditions(
@@ -121,13 +133,12 @@ class MoistureDataUpdateCoordinator(DataUpdateCoordinator):
 
     def _fetch_and_prepare_data(self) -> dict:
         # --- 1. Fetching ---
-        temp_state = self.hass.states.get("sensor.outside_temperature")
-        humidity_state = self.hass.states.get("sensor.tsensor_outside_humidity")
-        solar_state = self.hass.states.get("sensor.solar_total_power")
-
-        sun_state = self.hass.states.get("sun.sun")
-        rain_state = self.hass.states.get("sensor.rain_sensor")
-        weather_state = self.hass.states.get("weather.forecast_home_2")
+        temp_state = self.hass.states.get(self.temp_entity_id)
+        humidity_state = self.hass.states.get(self.humi_entity_id)
+        solar_state = self.hass.states.get(self.solar_entity_id)
+        rain_state = self.hass.states.get(self.rain_entity_id)
+        weather_state = self.hass.states.get(self.weather_entity_id)
+        sun_state = self.hass.states.get(self.sun_entity_id)
 
         if not all(
             [
@@ -147,11 +158,11 @@ class MoistureDataUpdateCoordinator(DataUpdateCoordinator):
 
             data = {}
 
-            data["temperature"] = self._get_float_state(temp_state, "temperature")
-            data["humidity"] = self._get_float_state(humidity_state, "humidity")
-            data["solar"] = self._get_float_state(solar_state, "solar")
+            data["temp"] = self._get_float_state(temp_state, "Temperature Sensor")
+            data["humidity"] = self._get_float_state(humidity_state, "Humidity Sensor")
+            data["solar"] = self._get_float_state(solar_state, "Solar Sensor")
             attributes_dict = weather_state.attributes
-            data["wind"] = self._get_float_state(attributes_dict, "wind speed")
+            data["wind"] = self._get_float_state(attributes_dict, "Wind speed Sensor")
 
             try:
                 data["raining"] = int(rain_state.state)

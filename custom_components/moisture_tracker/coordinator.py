@@ -162,7 +162,13 @@ class MoistureDataUpdateCoordinator(DataUpdateCoordinator):
             data["humidity"] = self._get_float_state(humidity_state, "Humidity Sensor")
             data["solar"] = self._get_float_state(solar_state, "Solar Sensor")
             attributes_dict = weather_state.attributes
-            data["wind"] = self._get_float_state(attributes_dict, "Wind speed Sensor")
+            wind_speed = attributes_dict.get("wind_speed", 0)
+
+            try:
+                data["wind"] = float(wind_speed)
+            except (ValueError, TypeError) as err:
+                msg = f"Failed to convert Wind ('{attributes_dict}') to float."
+                raise UpdateFailed(msg) from err
 
             try:
                 data["raining"] = int(rain_state.state)

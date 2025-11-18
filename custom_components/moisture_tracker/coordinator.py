@@ -36,14 +36,13 @@ class MoistureDataUpdateCoordinator(DataUpdateCoordinator):
             update_interval=timedelta(minutes=5),
         )
         # Store the moisture level between runs with self.
-        self.moisture_level: float = 0.
+        self.moisture_level: float = 0.0
 
         self.sunset_temp: float | None = None
         self.sunset_humi: float | None = None
 
         # store the sunset values ONCE per day.
         self.has_stored_sunset_values: bool = False
-
 
     async def _async_update_data(self) -> dict:
         try:
@@ -72,11 +71,11 @@ class MoistureDataUpdateCoordinator(DataUpdateCoordinator):
             dew_point_depression: float = 100.0
 
             if self.sunset_humi and self.sunset_temp:
-                dew_point_sunset = calculate_dew_point(self.sunset_temp,
-                                                       self.sunset_humi)
+                dew_point_sunset = calculate_dew_point(
+                    self.sunset_temp, self.sunset_humi
+                )
                 # Temperature below dew point
                 dew_point_depression = dew_point_sunset + DEW_TEMP_DIFFERENCE - temp
-
 
             # --- 2. Calculate Drying via Evaporation ---
             dry_rate = calculate_grass_drying(
@@ -121,7 +120,6 @@ class MoistureDataUpdateCoordinator(DataUpdateCoordinator):
             }
 
     def _fetch_and_prepare_data(self) -> dict:
-
         # --- 1. Fetching ---
         temp_state = self.hass.states.get("sensor.outside_temperature")
         humidity_state = self.hass.states.get("sensor.tsensor_outside_humidity")
@@ -130,7 +128,6 @@ class MoistureDataUpdateCoordinator(DataUpdateCoordinator):
         sun_state = self.hass.states.get("sun.sun")
         rain_state = self.hass.states.get("sensor.rain_sensor")
         weather_state = self.hass.states.get("weather.forecast_home_2")
-
 
         if not all(
             [
@@ -179,7 +176,6 @@ class MoistureDataUpdateCoordinator(DataUpdateCoordinator):
         else:
             return data
 
-
     def _track_sunset_conditions(
         self,
         sunset: datetime,
@@ -202,12 +198,11 @@ class MoistureDataUpdateCoordinator(DataUpdateCoordinator):
             )
 
         # Reset the flag (In the 12:00-12:05 window)
-        if now.hour == DEW_RESET_HOUR and now.minute < 5: # noqa: PLR2004
+        if now.hour == DEW_RESET_HOUR and now.minute < 5:  # noqa: PLR2004
             self.has_stored_sunset_values = False
-            self.sunset_temp = None # Clear old values
+            self.sunset_temp = None  # Clear old values
             self.sunset_humi = None
             LOGGER.info("Moisture Tracker: Reset daily sunset flag.")
-
 
     def _get_float_state(self, state_obj: State | None, name: str) -> float:
         """Convert a sensor's state attribute to a float."""
